@@ -1,24 +1,4 @@
-// categories is the main data structure for the app; it looks like this:
-
-//  [
-//    { title: "Math",
-//      clues: [
-//        {question: "2+2", answer: 4, showing: null},
-//        {question: "1+1", answer: 2, showing: null}
-//        ...
-//      ],
-//    },
-//    { title: "Literature",
-//      clues: [
-//        {question: "Hamlet Author", answer: "Shakespeare", showing: null},
-//        {question: "Bell Jar Author", answer: "Plath", showing: null},
-//        ...
-//      ],
-//    },
-//    ...
-//  ]
-
-const width = 5;
+const width = 6;
 const height = 5;
 
 let categories = [];
@@ -26,76 +6,85 @@ let randomQuestions = [];
 let categoryIds = [];
 let boardArr = [];
 
-/** Get NUM_CATEGORIES random category from API.
- *
- * Returns array of category ids
- */
-
 async function getCategoryIds() {
+	if (!document.getElementById('load')) {
+		showLoadingView();
+	}
 	// use "random question" on api and access catgory ID of each to create array of random category Id's
+	// Stores these Ids in "categoryIds" array
 
 	for (let i = 0; i < width; i++) {
 		let response = await axios.get('http://jservice.io/api/random');
-		console.log(response.data[0].category_id);
 		randomQuestions.push(response.data);
 		categoryIds.push(response.data[0].category_id);
 	}
 
+	// loops thought categoryIds array, retreives clues from API with getClues function that accepts
 	for (id of categoryIds) {
-		getCategory(id);
+		getClues(id);
 	}
 }
 
-function clearData() {}
-
-getCategoryIds();
-
-/** Return object with data about a category:
- *
- *  Returns { title: "Math", clues: clue-array }
- *
- * Where clue-array is:
- *   [
- *      {question: "Hamlet Author", answer: "Shakespeare", showing: null},
- *      {question: "Bell Jar Author", answer: "Plath", showing: null},
- *      ...
- *   ]
- */
-
-async function getCategory(catId) {
+async function getClues(catId) {
 	let response = await axios.get(`https://jservice.io/api/clues?&category=${catId}`);
+
+	// Makes start button only after data is loaded
+
+	if (!document.getElementById('start')) {
+		makeStartButton();
+	}
+
+	hideLoadingView();
+
+	// This works but sometimes there are "dud" questions. A complete object, but the .question is empty = '' --fixed
+	// Some values from API are returned are identicle BUT with different ids
 	let randIndexes = [];
 	let column = [];
 	let clues = response.data;
+	// answerArr is used to avoid duplicates with different ID's. before a clues is added to Column, its answer is scanned against the answers already added.
+	let answerArr = [];
 
-	while (randIndexes.length < width) {
-		// collect random unique index numbers to
-		let random = Math.floor(Math.random() * clues.length);
-		if (randIndexes.indexOf(random) === -1) {
-			randIndexes.push(random);
+	let loopCounter = 0;
+
+	while (randIndexes.length < height) {
+		if (loopCounter < 300) {
+			let random = Math.floor(Math.random() * clues.length);
+			loopCounter++;
+			if (
+				randIndexes.indexOf(random) === -1 &&
+				// several questions from the api are blank making them useless. This checks for empty questions
+				clues[random].question !== '' &&
+				// same as above, but for answers
+				clues[random].answer !== '' &&
+				// if the clue's answer is already in the answerArr it is a rogue duplicate
+				answerArr.indexOf(clues[random].answer) === -1
+			) {
+				randIndexes.push(random);
+				answerArr.push(clues[random].answer);
+			} else {
+				console.log(`error Caught at category ID ${catId} and clue ID ${clues[random].id}`);
+			}
+		} else {
+			alert('please try again');
+			break;
 		}
+		// collect random unique index numbers to suffle clues
 	}
 	for (num of randIndexes) {
 		// return 5 random questions from category
 		column.push(clues[num]);
 	}
-
 	boardArr.push(column);
 }
 
-// for (let i = 0; i < categoryIds.length; i++) {
-// 	getCategory(categoryIds[i]);
-// }
+function clearData() {
+	categories = [];
+	randomQuestions = [];
+	categoryIds = [];
+	boardArr = [];
+}
 
-/** Fill the HTML table#jeopardy with the categories & cells for questions.
- *
- * - The <thead> should be filled w/a <tr>, and a <td> for each category
- * - The <tbody> should be filled w/NUM_QUESTIONS_PER_CAT <tr>s,
- *   each with a question for each category in a <td>
- *   (initally, just show a "?" where the question/answer would go.)
- */
-
-async function fillTable() {}
+getCategoryIds();
 
 async function buildHTMLBoard() {
 	let table = document.createElement('table');
@@ -113,43 +102,55 @@ async function buildHTMLBoard() {
 		);
 	}
 
-	for (let i = 0; i < width; i++) {
-		// create row
-		let row = $('<tr>');
-		for (let j = height - 1; j >= 0; j--) {
-			if (!boardArr[j][i]) {
-				alert(`board array j ${j} and i ${i} does not exist`);
-			}
-			// loop through
-			// use cat.[i][j].question
-			let $td = $('<td>', {
-				id: `${i}${j}`
-			}).html(`${boardArr[j][i].question}`);
+	fillBoard();
 
-			//
-
-			row.append($td);
-		}
-
-		$('table').append(row);
-	}
-
-	$('td').addClass('hidden');
+	// builds tables and handles card click by adding event listener to the parent table
+	// had trouble getting the event listener to work in a seperate function. JQuery problem? any ideas?
 
 	$('table').on('click', 'td', function(e) {
-		$(this).removeClass('hidden');
-		console.log('clicked');
+		let classes = e.target.classList;
 		let indexes = e.target.id.split('').map(Number);
-		console.log(indexes);
-		console.log(e.target.id);
+		// disables event listener by adding class, then removing after answer is revealed
+		if (classes.contains('frozen')) {
+			return;
+		}
+		e.target.innerHTML = `${boardArr[indexes[1]][indexes[0]].question}`;
+		$(this).removeClass('hidden');
+		$('td').addClass('frozen');
+		console.log('clicked');
+
+		// seperate id of indexes, convert each character from string to Num and convert into array.
+
 		setTimeout(function() {
 			e.target.innerHTML = `${boardArr[indexes[1]][indexes[0]].answer}`;
+			$('td').removeClass('frozen');
 		}, 2000);
 	});
 }
 
+function fillBoard() {
+	for (let c = 0; c < height; c++) {
+		// create row
+		let row = $('<tr>');
+		for (let r = width - 1; r >= 0; r--) {
+			// presents alert if data is not valid
+			if (!boardArr[r][c]) {
+				alert(`board array j ${r} and i ${c} does not exist`);
+			}
+			// adding unique ID of position in the boardArr to access object methods like "question" of that specific "clue" object
+			let $td = $('<td>', {
+				id: `${c}${r}`
+			}).html(`?`);
+			row.append($td);
+		}
+		$('table').append(row);
+	}
+	$('td').addClass('hidden');
+}
+
 function makeStartButton() {
 	let startButton = document.createElement('button');
+	startButton.setAttribute('id', 'start');
 	startButton.innerText += 'Start';
 	startButton.addEventListener('click', function(e) {
 		e.preventDefault();
@@ -158,7 +159,6 @@ function makeStartButton() {
 		makeClearButton();
 	});
 	document.body.append(startButton);
-	// remove button or some alternative
 }
 
 function makeClearButton() {
@@ -166,51 +166,26 @@ function makeClearButton() {
 	clearButton.innerText += 'Clear';
 	clearButton.addEventListener('click', function(e) {
 		e.preventDefault();
+
+		clearData();
+		getCategoryIds();
 		$('table').remove();
 		$('button').remove();
-
-		makeStartButton();
 	});
 	document.body.append(clearButton);
 }
 
-makeStartButton();
-
-/** Handle clicking on a clue: show the question or answer.
- *
- * Uses .showing property on clue to determine what to show:
- * - if currently null, show question & set .showing to "question"
- * - if currently "question", show answer & set .showing to "answer"
- * - if currently "answer", ignore click
- * */
-
-function handleClick(evt) {
-	// use Jquery event delegation to the PARENT element (table) to add .on('click') to all <td>s
+function showLoadingView() {
+	let load = document.createElement('span');
+	load.innerText = 'Loading Jeopardy';
+	load.setAttribute('id', 'load');
+	document.body.append(load);
 }
 
-/** Wipe the current Jeopardy board, show the loading spinner,
- * and update the button used to fetch data.
- */
-
-function showLoadingView() {}
-
-/** Remove the loading spinner and update the button used to fetch data. */
-
-function hideLoadingView() {}
-
-/** Start game:
- *
- * - get random category Ids
- * - get data for each category
- * - create HTML table
- * */
+function hideLoadingView() {
+	if (document.getElementById('load')) {
+		$('#load').remove();
+	}
+}
 
 async function setupAndStart() {}
-
-/** On click of start / restart button, set up game. */
-
-// TODO
-
-/** On page load, add event handler for clicking clues */
-
-// TODO

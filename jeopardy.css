@@ -8,3 +8,20 @@
 .hidden {
 	background-color: black;
 }
+.td .hidden {
+	height: 20px;
+	width: 20px;
+	color: white;
+}
+
+table {
+	table-layout: fixed;
+	width: 90%;
+}
+th {
+	width: 14%;
+}
+
+td {
+	height: 14%;
+}
